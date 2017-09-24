@@ -73,6 +73,7 @@ parser.add_argument('--unknown', type=bool, default=False,
                     help='Try to predict unknown people')
 args = parser.parse_args()
 
+
 class FaceRecogniser(object):
     """This class implements face recognition using Openface's
     pretrained neural network and a Linear SVM classifier. Functions
@@ -80,16 +81,16 @@ class FaceRecogniser(object):
     on detected faces"""
 
     def __init__(self):
-        self.net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,cuda=args.cuda)
+        self.net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim, cuda=args.cuda)
         self.align = openface.AlignDlib(args.dlibFacePredictor)
         self.neuralNetLock = threading.Lock()
         self.predictor = dlib.shape_predictor(args.dlibFacePredictor)
 
         logger.info("Opening classifier.pkl to load existing known faces db")
-        with open("generated-embeddings/classifier.pkl", 'r') as f: # le = labels, clf = classifier
-            (self.le, self.clf) = pickle.load(f) # Loads labels and classifier SVM or GMM
+        with open("generated-embeddings/classifier.pkl", 'r') as f:  # le = labels, clf = classifier
+            (self.le, self.clf) = pickle.load(f)  # Loads labels and classifier SVM or GMM
 
-    def make_prediction(self,rgbFrame,bb):
+    def make_prediction(self, rgbFrame, bb):
         """The function uses the location of a face
         to detect facial landmarks and perform an affine transform
         to align the eyes and nose to the correct positiion.
@@ -102,14 +103,15 @@ class FaceRecogniser(object):
         if landmarks == None:
             logger.info("///  FACE LANDMARKS COULD NOT BE FOUND  ///")
             return None
-        alignedFace = self.align.align(args.imgDim, rgbFrame, bb,landmarks=landmarks,landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE)
+        alignedFace = self.align.align(args.imgDim, rgbFrame, bb, landmarks=landmarks,
+                                       landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE)
 
         if alignedFace is None:
             logger.info("///  FACE COULD NOT BE ALIGNED  ///")
             return None
 
         logger.info("////  FACE ALIGNED  // ")
-        with self.neuralNetLock :
+        with self.neuralNetLock:
             persondict = self.recognize_face(alignedFace)
 
         if persondict is None:
@@ -119,27 +121,29 @@ class FaceRecogniser(object):
             logger.info("/////  FACE RECOGNIZED  /// ")
             return persondict, alignedFace
 
-    def recognize_face(self,img):
+    def recognize_face(self, img):
         if self.getRep(img) is None:
             return None
-        rep1 = self.getRep(img) # Gets embedding representation of image
+        rep1 = self.getRep(img)  # Gets embedding representation of image
         logger.info("Embedding returned. Reshaping the image and flatting it out in a 1 dimension array.")
-        rep = rep1.reshape(1, -1)   #take the image and  reshape the image array to a single line instead of 2 dimensionals
+        rep = rep1.reshape(1,
+                           -1)  # take the image and  reshape the image array to a single line instead of 2 dimensionals
         start = time.time()
         logger.info("Submitting array for prediction.")
-        predictions = self.clf.predict_proba(rep).ravel() # Computes probabilities of possible outcomes for samples in classifier(clf).
-        #logger.info("We need to dig here to know why the probability are not right.")
+        predictions = self.clf.predict_proba(
+            rep).ravel()  # Computes probabilities of possible outcomes for samples in classifier(clf).
+        # logger.info("We need to dig here to know why the probability are not right.")
         maxI = np.argmax(predictions)
         person1 = self.le.inverse_transform(maxI)
-        confidence1 = int(math.ceil(predictions[maxI]*100))
+        confidence1 = int(math.ceil(predictions[maxI] * 100))
 
         logger.info("Recognition took {} seconds.".format(time.time() - start))
         logger.info("Recognized {} with {:.2f} confidence.".format(person1, confidence1))
 
-        persondict = {'name': person1, 'confidence': confidence1, 'rep':rep1}
+        persondict = {'name': person1, 'confidence': confidence1, 'rep': rep1}
         return persondict
 
-    def getRep(self,alignedFace):
+    def getRep(self, alignedFace):
         bgrImg = alignedFace
         if bgrImg is None:
             logger.error("unable to load image")
@@ -149,12 +153,12 @@ class FaceRecogniser(object):
         alignedFace = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
         start = time.time()
         logger.info("Getting embedding for the face")
-        rep = self.net.forward(alignedFace) # Gets embedding - 128 measurements
+        rep = self.net.forward(alignedFace)  # Gets embedding - 128 measurements
         return rep
 
     def reloadClassifier(self):
-        with open("generated-embeddings/classifier.pkl", 'r') as f: # Reloads character stream from pickle file
-            (self.le, self.clf) = pickle.load(f) # Loads labels and classifier SVM or GMM
+        with open("generated-embeddings/classifier.pkl", 'r') as f:  # Reloads character stream from pickle file
+            (self.le, self.clf) = pickle.load(f)  # Loads labels and classifier SVM or GMM
         logger.info("reloadClassifier called")
         return True
 
@@ -170,13 +174,14 @@ class FaceRecogniser(object):
 
         path = fileDir + "/aligned-images/cache.t7"
         try:
-            os.remove(path) # Remove cache from aligned images folder
+            os.remove(path)  # Remove cache from aligned images folder
         except:
             logger.info("Failed to remove cache.t7. Could be that it did not existed in the first place.")
             pass
 
         start = time.time()
-        aligndlib.alignMain("training-images/","aligned-images/","outerEyesAndNose",args.dlibFacePredictor,args.imgDim)
+        aligndlib.alignMain("training-images/", "aligned-images/", "outerEyesAndNose", args.dlibFacePredictor,
+                            args.imgDim)
         logger.info("Aligning images for training took {} seconds.".format(time.time() - start))
         done = False
         start = time.time()
@@ -187,22 +192,22 @@ class FaceRecogniser(object):
             logger.info("Representation Generation (Classification Model) took {} seconds.".format(time.time() - start))
             start = time.time()
             # Train Model
-            self.train("generated-embeddings/","LinearSvm",-1)
+            self.train("generated-embeddings/", "LinearSvm", -1)
             logger.info("Training took {} seconds.".format(time.time() - start))
         else:
             logger.info("Generate representation did not return True")
 
-
     def generate_representation(self):
         logger.info("lua Directory:    " + luaDir)
-        self.cmd = ['/usr/bin/env', 'th', os.path.join(luaDir, 'main.lua'),'-outDir',  "generated-embeddings/" , '-data', "aligned-images/"]
+        self.cmd = ['/usr/bin/env', 'th', os.path.join(luaDir, 'main.lua'), '-outDir', "generated-embeddings/", '-data',
+                    "aligned-images/"]
         logger.info("lua command:    " + str(self.cmd))
         if args.cuda:
             self.cmd.append('-cuda')
             logger.info("using -cuda")
         self.p = Popen(self.cmd, stdin=PIPE, stdout=PIPE, bufsize=0)
-        #our issue is here, torch probably crashes without giving much explanation.
-        outs, errs = self.p.communicate() # Wait for process to exit - wait for subprocess to finish writing to files: labels.csv & reps.csv
+        # our issue is here, torch probably crashes without giving much explanation.
+        outs, errs = self.p.communicate()  # Wait for process to exit - wait for subprocess to finish writing to files: labels.csv & reps.csv
         logger.info("Waiting for process to exit to finish writing labels and reps.csv" + str(outs) + " - " + str(errs))
 
         def exitHandler():
@@ -210,37 +215,39 @@ class FaceRecogniser(object):
                 logger.info("<=Something went Wrong===>")
                 self.p.kill()
                 return False
+
         atexit.register(exitHandler)
 
         return True
 
-
-    def train(self,workDir,classifier,ldaDim):
-        fname = "{}labels.csv".format(workDir) #labels of faces
-        logger.info("Loading labels " + fname + " csv size: " +  str(os.path.getsize("/root/home_surveillance/system/generated-embeddings/reps.csv")))
+    def train(self, workDir, classifier, ldaDim):
+        fname = "{}labels.csv".format(workDir)  # labels of faces
+        logger.info("Loading labels " + fname + " csv size: " + str(
+            os.path.getsize("/root/home_surveillance/system/generated-embeddings/reps.csv")))
         if os.path.getsize(fname) > 0:
             logger.info(fname + " file is not empty")
             labels = pd.read_csv(fname, header=None).as_matrix()[:, 1]
             logger.info(labels)
         else:
             logger.info(fname + " file is empty")
-            labels = "1:aligned-images/dummy/1.png"  #creating a dummy string to start the process
+            labels = "1:aligned-images/dummy/1.png"  # creating a dummy string to start the process
         logger.debug(map(os.path.dirname, labels))
-        logger.debug(map(os.path.split,map(os.path.dirname, labels)))
-        logger.debug(map(itemgetter(1),map(os.path.split,map(os.path.dirname, labels))))
-        labels = map(itemgetter(1),map(os.path.split,map(os.path.dirname, labels)))
+        logger.debug(map(os.path.split, map(os.path.dirname, labels)))
+        logger.debug(map(itemgetter(1), map(os.path.split, map(os.path.dirname, labels))))
+        labels = map(itemgetter(1), map(os.path.split, map(os.path.dirname, labels)))
 
-        fname = "{}reps.csv".format(workDir) # Representations of faces
+        fname = "{}reps.csv".format(workDir)  # Representations of faces
         fnametest = format(workDir) + "reps.csv"
         logger.info("Loading embedding " + fname + " csv size: " + str(os.path.getsize(fname)))
         if os.path.getsize(fname) > 0:
             logger.info(fname + " file is not empty")
-            embeddings = pd.read_csv(fname, header=None).as_matrix() # Get embeddings as a matrix from reps.csv
+            embeddings = pd.read_csv(fname, header=None).as_matrix()  # Get embeddings as a matrix from reps.csv
         else:
             logger.info(fname + " file is empty")
-            embeddings = np.zeros((2,150)) #creating an empty array since csv is empty
+            embeddings = np.zeros((2, 150))  # creating an empty array since csv is empty
 
-        self.le = LabelEncoder().fit(labels) # LabelEncoder is a utility class to help normalize labels such that they contain only values between 0 and n_classes-1
+        self.le = LabelEncoder().fit(
+            labels)  # LabelEncoder is a utility class to help normalize labels such that they contain only values between 0 and n_classes-1
         # Fits labels to model
         labelsNum = self.le.transform(labels)
         nClasses = len(self.le.classes_)
@@ -252,18 +259,18 @@ class FaceRecogniser(object):
             self.clf = GMM(n_components=nClasses)
 
         if ldaDim > 0:
-            clf_final =  self.clf
+            clf_final = self.clf
             self.clf = Pipeline([('lda', LDA(n_components=ldaDim)),
-                ('clf', clf_final)])
+                                 ('clf', clf_final)])
 
-        self.clf.fit(embeddings, labelsNum) #link embeddings to labels
+        self.clf.fit(embeddings, labelsNum)  # link embeddings to labels
 
         fName = "{}/classifier.pkl".format(workDir)
         logger.info("Saving classifier to '{}'".format(fName))
         with open(fName, 'w') as f:
-            pickle.dump((self.le,  self.clf), f) # Creates character stream and writes to file to use for recognition
+            pickle.dump((self.le, self.clf), f)  # Creates character stream and writes to file to use for recognition
 
-    def getSquaredl2Distance(self,rep1,rep2):
+    def getSquaredl2Distance(self, rep1, rep2):
         """Returns number between 0-4, Openface calculated the mean between
         similar faces is 0.99 i.e. returns less than 0.99 if reps both belong
         to the same person"""

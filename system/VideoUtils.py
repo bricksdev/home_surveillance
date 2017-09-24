@@ -47,11 +47,11 @@ parser.add_argument('--imgDim', type=int,
 parser.add_argument('--cuda', action='store_true')
 args = parser.parse_args()
 
-CAPTURE_HZ = 30.0  # Determines frame rate at which frames are captured from IP camera
+CAPTURE_HZ = 30.0  # Determines frame rate at which frames are captured from video
 
 
-class IPCamera(object):
-    """The IPCamera object continually captures frames
+class VideoAnalysis(object):
+    """The VideoAnalysis object continually captures frames
     from a camera and makes these frames available for
     proccessing and streamimg to the web client. A
     IPCamera can be processed using 5 different processing
@@ -60,8 +60,8 @@ class IPCamera(object):
     detect_recognise_track. These can be found in the
     SureveillanceSystem object, within the process_frame function"""
 
-    def __init__(self, camURL, cameraFunction, dlibDetection, fpsTweak):
-        logger.info("Loading Stream From IP Camera: " + camURL)
+    def __init__(self, videoURL, dlibDetection, fpsTweak):
+        logger.info("Loading Stream From video: " + videoURL)
         self.motionDetector = MotionDetector.MotionDetector()
         self.faceDetector = FaceDetector.FaceDetector()
         self.processing_frame = None
@@ -74,7 +74,6 @@ class IPCamera(object):
         self.motion = False  # Used for alerts and transistion between system states i.e from motion detection to face detection
         self.people = {}  # Holds person ID and corresponding person object
         self.trackers = []  # Holds all alive trackers
-        self.cameraFunction = cameraFunction
         self.dlibDetection = dlibDetection  # Used to choose detection method for camera (dlib - True vs opencv - False)
         self.fpsTweak = fpsTweak  # used to know if we should apply the FPS work around when you have many cameras
         self.rgbFrame = None
@@ -82,9 +81,9 @@ class IPCamera(object):
         self.captureEvent = threading.Event()
         self.captureEvent.set()
         self.peopleDictLock = threading.Lock()  # Used to block concurrent access to people dictionary
-        self.video = cv2.VideoCapture(camURL * 1)  # VideoCapture object used to capture frames from IP camera
+        self.video = cv2.VideoCapture(videoURL)  # VideoCapture object used to capture frames from video
         logger.info("We are opening the video feed.")
-        self.url = camURL
+        self.url = videoURL
         if not self.video.isOpened():
             self.video.open()
         logger.info("Video feed open.")
@@ -168,6 +167,7 @@ class IPCamera(object):
         frame = ImageUtils.resize_mjpeg(frame)
         ret, jpeg = cv2.imencode('.jpg', frame)
         return jpeg.tostring()
+
 
     def dump_video_info(self):
         logger.info("---------Dumping video feed info---------------------")

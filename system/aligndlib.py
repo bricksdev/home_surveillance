@@ -76,7 +76,7 @@ def computeMeanMain(args):
     plt.savefig("{}/mean.png".format(args.modelDir))
 
 
-def alignMain(inputDir,outputDir,landmarks,dlibFacePredictor,size):
+def alignMain(inputDir, outputDir, landmarks, dlibFacePredictor, size):
     openface.helper.mkdirP(outputDir)
 
     imgs = list(iterImgs(inputDir))
@@ -111,9 +111,9 @@ def alignMain(inputDir,outputDir,landmarks,dlibFacePredictor,size):
                 print("  + Unable to load.")
                 outRgb = None
             else:
-                outRgb = align.align(size, rgb, landmarkIndices=landmarkIndices)                           
+                outRgb = align.align(size, rgb, landmarkIndices=landmarkIndices)
                 if outRgb is None:
-                    print("  + Unable to align.")           
+                    print("  + Unable to align.")
 
             if outRgb is not None:
                 print("  + Writing aligned file to disk.")

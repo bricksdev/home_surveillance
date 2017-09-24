@@ -187,9 +187,12 @@
         <li class="active">Dashboard</li>
       </ol>
     </section>
-
+<section class="content" style="display:none;" >
+    <div class="row" id = "revenue-chart"></div><div class="row" id = "line-chart"></div><div class="row" id = "sales-chart"></div>
+    </section>
     <!-- Main content -->
     <section class="content">
+
       <!-- Small boxes (Stat box) -->
         <div class="row" id = "surveillance_panel">
 
@@ -285,9 +288,9 @@
                                
                                 <label>Video Processing Application</label>
                                     <select id="application" class="form-control">
-                                        <!--<option value="detect_motion">Motion Detection</option>
+                                        <option value="detect_motion">Motion Detection</option>
                                         <option value="detect_recognise">Face Recognition</option>
-                                        <option value="motion_detect_recognise">Motion Detection & Face Recognition</option>-->
+                                        <option value="motion_detect_recognise">Motion Detection & Face Recognition</option>
                                         <option value="segment_detect_recognise">Motion Object Segmentation & Face Recognition</option>
                                         <option value="detect_recognise_track">Face Recognition & Tracking</option>
                                     </select>
@@ -527,10 +530,25 @@
                       <div class="col-md-9 col-sm-8 col-xs-8">
                          <div id="face-Images">
                   <!-- /.info-box-content --> 
-                       
+
                          </div> 
                        
                     </div>     <!-- /.users-list -->
+                  </div>
+
+
+
+                  <div class="box-body">
+                      <form method="POST" id="detectingForm" enctype="multipart/form-data" action="{{ url_for('detecting') }}">
+                         <div class=row>
+
+                              <div class="col-md-12 col-sm-10 col-xs-10">
+                               <input type=file name=photo class="btn btn-xs pull-left" style="padding: 0">
+                               <input type="button" class="btn btn-primary btn-xs pull-right" id="detectingUpload" value="检测"">
+                              </div>
+                         </div>
+                       </form>
+
                   </div>
                     <!-- /.box-body -->
                   <div class="box-footer text-center">
@@ -622,7 +640,8 @@
 <!-- ./wrapper -->
 
 <!-- jQuery 2.2.3 -->
-<script type="text/javascript" src="//code.jquery.com/jquery-1.4.2.min.js"></script>
+<script type="text/javascript" src="static/plugins/jQuery/jquery-2.2.3.min.js"></script>
+<script type="text/javascript" src="static/plugins/jquery-form/jquery.form.min.js"></script>
 <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.5/socket.io.min.js"></script>
 <script type="text/javascript" charset="utf-8">
 
@@ -882,6 +901,227 @@
                               }
                         });
                  }
+            $(function () {
+                //上传图片
+                 $("#detectingUpload").click(function () {
+                    if ($("#photo").val() == "") {
+                        alert("请选择一个图片文件，再点击上传。");
+                        return;
+                    }
+                    console.log($('#detectingForm'))
+                    $('#detectingForm').ajaxSubmit({
+                        url:"{{ url_for('detecte_face') }}",
+                        dataType:"json"
+                        ,success: function (data) {
+
+                            if(data.success){
+                                for(idx in data.photo_path){
+                                    ppath = data.photo_path[idx];
+                                    var img_string = "/get_name_faces/"+ data.person +"-" + ppath + "#";
+
+            /////////////////////////////////////////////////////////////////// Main divs
+                                    var maindiv = document.createElement("div");
+                                    maindiv.setAttribute("class", "col-md-3 ");
+                                    maindiv.setAttribute("id", data.person + "-"+ ppath);
+                                    var thumbdiv = document.createElement("div");
+                                    thumbdiv.setAttribute("class", "thumbnail ");
+            /////////////////////////////////////////////////////////////////// img element
+                                    var imgj = document.createElement("img");
+                                    imgj.setAttribute("src", img_string + new Date().getTime());
+                                    imgj.setAttribute("height", "100");
+                                    imgj.setAttribute("width", "100");
+                                    imgj.setAttribute("id", data.person + "-"+ ppath + "_image");
+                                    imgj.setAttribute("alt", "Random Name");
+                                    imgj.setAttribute("class", "person"); //img-circle
+                                    //document.getElementById("progressbar").appendChild(imgj);
+                                    thumbdiv.appendChild(imgj);
+            /////////////////////////////////////////////////////////////////// name element
+                                    var name = document.createElement("p");
+                                    name.setAttribute("class", "text-center predictedName text-black");
+                                    name.setAttribute("id", data.person + "-"+ ppath+"_prediction");
+                                    name.innerHTML = "<strong>"+data.person+"</strong>";
+                                    thumbdiv.appendChild(name);
+            /////////////////////////////////////////////////////////////////// button element
+                                    var aligndiv = document.createElement("div");
+                                    aligndiv.setAttribute("class","pull-right");
+
+                                    var btndiv = document.createElement("div");
+                                    btndiv.setAttribute("class","btn-group");
+                                    var btn = document.createElement("BUTTON");
+                                    btn.setAttribute("type","button");
+                                    btn.setAttribute("class", "btn btn-default btn-xs dropdown-toggle");
+                                    btn.setAttribute("data-toggle","dropdown");
+
+                                    var spn = document.createElement("span");
+                                    spn.setAttribute("class","caret");
+                                    btn.appendChild(spn);
+
+                                    var list = document.createElement("ul");
+                                    list.setAttribute("class","dropdown-menu text-centre");
+                                    list.setAttribute("role","menu");
+                                    list.setAttribute("id","faceActionList");
+
+
+                                    var listitem = document.createElement("li");
+                                    var inner = document.createElement("a");
+                                    inner.setAttribute("id",data.person + "-"+ ppath+"_remove");
+
+                                    //addFace(id)
+                                    listitem.appendChild(inner);
+                                    list.appendChild(listitem);
+
+                                    var listitem = document.createElement("li");
+                                    var inner = document.createElement("a");
+                                    inner.setAttribute("id",data.person + "-"+ ppath+"_trust");
+
+
+                                    listitem.appendChild(inner);
+                                    list.appendChild(listitem);
+
+                                    var listitem = document.createElement("li");
+                                    var inner = document.createElement("a");
+                                    inner.setAttribute("data-toggle","modal");
+                                    inner.setAttribute("id","addfacebtnID");
+                                    inner.setAttribute("data-target","#"+data.person + "-"+ ppath+"_modal");
+                                    inner.innerHTML = "Add New Face";
+
+                                    listitem.appendChild(inner);
+                                    list.appendChild(listitem);
+
+                                    btndiv.appendChild(btn);
+                                    btndiv.appendChild(list);
+                                    aligndiv.appendChild(btndiv);
+
+                                    //document.getElementById("progressbar").appendChild(btndiv);
+                                    thumbdiv.appendChild(aligndiv);
+             ///////////////////////////////////////////////////////////////////  progress bar element
+                                    var d1 = document.createElement("div");
+                                    d1.setAttribute("class","progress");
+                                    var d2 = document.createElement("div");
+                                    //var values = people[i].prediction.split('_');
+                                    //var name = values[0];
+
+
+                                    d2.setAttribute("aria-valuenow","50");
+                                    d2.setAttribute("aria-valuemin","0");
+                                    d2.setAttribute("aria-valuemax","100");
+
+                                    d1.appendChild(d2);
+
+                                    var info = document.createElement("span");
+                                    info.setAttribute("id","detectioinfo");
+                                    info.setAttribute("style","text-align:center; color:black; font-size:70%;");
+                                    info.innerHTML = "Detected " + data.person + "-"+ ppath;
+
+
+             /////////////////////////////////////////////////////////////////////////////////////
+
+                                    var modal = document.createElement("div");
+                                    modal.setAttribute("class","modal modal-default fade col-md-3 text-center");
+                                    modal.setAttribute("id",data.person + "-"+ ppath + "_modal");
+                                    modal.setAttribute("tabindex","-1");
+                                    modal.setAttribute("role","dialog");
+                                    modal.setAttribute("aria-labelledby","myModalLabel");
+                                    modal.setAttribute("aria-hidden","true");
+
+
+
+                                    var dialog = document.createElement("div");
+                                    dialog.setAttribute("class","modal-dialog");
+                                    //modal.appendChild(dialog);
+
+                                    var content = document.createElement("div");
+                                    dialog.setAttribute("class","modal-content");
+                                    //dialog.appendChild(content);
+
+                                    var header = document.createElement("div");
+                                    header.setAttribute("class","modal-header");
+                                    //dialog.appendChild(content);
+
+                                    var btn2 = document.createElement("BUTTON");
+                                    btn2.setAttribute("type","button");
+                                    btn2.setAttribute("class", "close");
+                                    btn2.setAttribute("data-dismiss","modal");
+                                    btn2.setAttribute("aria-hidden","true");
+                                    btn2.innerHTML = "&times;";
+
+                                    header.appendChild(btn2);
+
+                                    var title = document.createElement("h4");
+                                    title.setAttribute("id","myModalLabel");
+                                    title.setAttribute("class", "modal-title text-black text-center");
+                                    title.innerHTML = "Add face to Database";
+
+                                    header.appendChild(title);
+                                    content.appendChild(header);
+
+                                    var body = document.createElement("div");
+                                    body.setAttribute("class","modal-body");
+
+                                    var rowdiv = document.createElement("div");
+                                    rowdiv.setAttribute("class","row");
+
+                                    var imgj1 = document.createElement("img");
+                                    imgj1.setAttribute("src", img_string + new Date().getTime());
+                                    imgj1.setAttribute("height", "100");
+                                    imgj1.setAttribute("width", "100");
+                                    imgj1.setAttribute("id", data.person + "-"+ ppath+ "_imageModal");
+                                    imgj1.setAttribute("class", "person"); //img-circle
+
+                                    rowdiv.appendChild(imgj1);
+
+                                    body.appendChild(rowdiv);
+
+
+
+                                    var form = document.createElement("div");
+                                    form.setAttribute("class","form-group has-primary");
+
+                                    var input = document.createElement("input");
+                                    input.setAttribute("class","form-control");
+                                    input.setAttribute("placeholder","Enter Name");
+                                    input.setAttribute("type","text");
+                                    input.setAttribute("id", data.person + "-"+ ppath+ "_input");
+
+                                    form.appendChild(input);
+                                    body.appendChild(form);
+
+                                    content.appendChild(body);
+
+                                    var footer = document.createElement("div");
+                                    footer.setAttribute("class","modal-footer");
+                                    //dialog.appendChild(content);
+
+                                    var btn3 = document.createElement("BUTTON");
+                                    btn3.setAttribute("type","button");
+                                    btn3.setAttribute("class", "btn btn-primary pull-right");
+                                    btn3.setAttribute("data-dismiss","modal");
+                                    btn3.setAttribute("aria-hidden","true");
+                                    btn3.setAttribute("id",data.person + "-"+ ppath + "_add");
+
+                                    btn3.innerHTML = "Add Face";
+
+                                    footer.appendChild(btn3);
+
+                                    content.appendChild(footer);
+                                    dialog.appendChild(content);
+                                    modal.appendChild(dialog);
+
+                                    thumbdiv.appendChild(d1);
+                                    thumbdiv.appendChild(info);
+
+                                    maindiv.appendChild(thumbdiv);
+
+
+                                    document.getElementById("detected-faces").appendChild(maindiv);
+                                    document.getElementById("detected-faces").appendChild(modal);
+                            }
+                        }
+                        }
+                    });
+                });
+            });
+
 
                 $(document).ready(function(){
 
@@ -1217,6 +1457,7 @@
                                
                         });
 
+
                       socket.on('system_data', function(json) {   
 
                                console.log("System Data: " + json);
@@ -1314,6 +1555,57 @@
                               
                         });
 
+                          socket.on('connect', function () {
+                            try {
+                                console.log('connect success');
+                            } catch (e) {
+                            }
+
+                            socket.emit('my event', {data:{id:11, nation:2334}});
+                        });
+                        socket.on('message', function (message, callback) {
+                            try {
+                                console.log('message');
+                            } catch (e) {
+                            }
+                        });
+                        socket.on('disconnect', function () {
+                            try {
+                                console.log('disconnect');
+                            } catch (e) {
+                            }
+                        });
+                        socket.on('connect_failed', function () {
+                            try {
+                                console.log('connect_failed');
+                            } catch (e) {
+                            }
+                        });
+                        socket.on('error', function () {
+                            try {
+                                console.log('error');
+                            } catch (e) {
+                            }
+                        });
+                        socket.on('reconnect_failed', function () {
+                            try {
+                                console.log('reconnect_failed');
+                            } catch (e) {
+                            }
+                        });
+                        socket.on('reconnect', function () {
+                            try {
+                                console.log('reconnect');
+                            } catch (e) {
+                            }
+                        });
+                        socket.on('reconnecting', function () {
+
+                            try {
+                                console.log('reconnecting');
+                            } catch (e) {
+                            }
+                        });
 
                 });
 
@@ -1324,7 +1616,6 @@
 <!-- Bootstrap slider -->
 <script src="static/plugins/bootstrap-slider/bootstrap-slider.js"></script>
 
-<script src="static/plugins/jQuery/jquery-2.2.3.min.js"></script>
 <!-- jQuery UI 1.11.4 -->
 <script src="https://code.jquery.com/ui/1.11.4/jquery-ui.min.js"></script>
 <!-- Resolve conflict in jQuery UI tooltip with Bootstrap tooltip -->

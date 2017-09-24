@@ -51,6 +51,11 @@ photos = UploadSet('photos', IMAGES)
 app.config['UPLOADED_PHOTOS_DEST'] = 'uploads/imgs'
 configure_uploads(app, photos)
 
+import sys
+sys.path.append('../pycharm-debug.egg')
+
+import pydevd
+pydevd.settrace('192.168.1.14', port=21000, stdoutToServer=True, stderrToServer=True)
 
 @app.route('/', methods=['GET','POST'])
 def login():
@@ -97,6 +102,91 @@ def upload():
     else:
         return redirect(url_for('login'))
 
+@app.route('/detecting', methods=['GET', 'POST'])
+def detecting():
+    message = None
+    if request.method == 'POST' and 'photo' in request.files:
+        try:
+            filename = photos.save(request.files['photo'])
+            image = request.files['photo']
+            name = request.form.get('name')
+            image = cv2.imread('uploads/imgs/' + filename)
+            person = HomeSurveillance.detected_recoginer_face(image)
+            message = "ditected successfully"
+
+        except:
+             message = "ditected unsuccessfull"
+
+        return render_template('index.html', message = message, person= person)
+    if g.user:
+        return render_template('index.html')
+    else:
+        return redirect(url_for('login'))
+
+@app.route('/adduser', methods=['POST'])
+def adduser():
+    data = {"success":False}
+    message = None
+    # token must validate if it is exits
+    if 'apitoken' in request.headers and 'photo' in request.files:
+        try:
+            filename = photos.save(request.files['photo'])
+            image = request.files['photo']
+            name = request.form.get('name')
+            image = cv2.imread('uploads/imgs/' + filename)
+            wriitenToDir = HomeSurveillance.add_face(name,image, upload = True)
+            message = "file uploaded successfully"
+            data["success"]=True
+        except:
+            message = "file upload unsuccessfull"
+
+    data["message"] = message
+    #back json
+    return jsonify(data)
+
+@app.route('/detecte_face', methods=['POST'])
+def detecte_face():
+    data = {"success": False}
+    message = None
+    if request.method == 'POST' and 'photo' in request.files:
+        try:
+            filename = photos.save(request.files['photo'])
+            image = request.files['photo']
+            name = request.form.get('name')
+            image = cv2.imread('uploads/imgs/' + filename)
+            person = HomeSurveillance.detected_recoginer_face(image)
+
+
+            if person is not None :
+                data["success"] = True
+                data["person"] = person.identity
+                key, paths = HomeSurveillance.get_face_path_name(person.identity)
+                data["photo_path"] = paths
+                message = "ditected successfully"
+            else:
+                data["success"] = False
+                message = "face Not found"
+        except:
+             message = "ditected unsuccessfull"
+
+    data["message"] = message
+    #back json
+    return jsonify(data)
+
+@app.route('/get_name_faces/<name>', methods=['POST',"GET"])
+def get_name_faces(name):
+    """Used to push all detected faces to client"""
+    key, filename = name.split("-")
+    img = HomeSurveillance.get_face_name(key, filename)
+    return Response((b'--frame\r\n'
+                     b'Content-Type: image/jpeg\r\n\r\n' + img + b'\r\n\r\n'),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def openwebcam():
+    HomeSurveillance.open
+    message = "open successfull"
+    return render_template('index.html', message=message)
+
 def gen(camera):
     """Can read processed frame or unprocessed frame.
     When streaming the processed frame with read_processed()
@@ -105,11 +195,11 @@ def gen(camera):
     however slows down streaming and therefore read_jpg()
     is recommended"""
     while True:
-        frame = camera.read_processed()    # read_jpg()  # read_processed()    
+        frame = camera.read_jpg()    # read_jpg()  # read_processed()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')  # Builds 'jpeg' data with header and payload
 
-@app.route('/video_streamer/<camNum>')
+@app.route('/video_streamer/<camNum>', methods = ['GET','POST'])
 def video_streamer(camNum):
     """Used to stream frames to client, camNum represents the camera index in the cameras array"""
     return Response(gen(HomeSurveillance.cameras[int(camNum)]),
@@ -145,18 +235,22 @@ def memory_usage():
 @app.route('/add_camera', methods = ['GET','POST'])
 def add_camera():
     """Adds camera new camera to SurveillanceSystem's cameras array"""
-    if request.method == 'POST':  
-        camURL = request.form.get('camURL')
-        application = request.form.get('application')
-        detectionMethod = request.form.get('detectionMethod')
-        fpsTweak = request.form.get('fpstweak')
-        with HomeSurveillance.camerasLock :
-            HomeSurveillance.add_camera(SurveillanceSystem.Camera.IPCamera(camURL,application,detectionMethod,fpsTweak))
-        data = {"camNum": len(HomeSurveillance.cameras) -1}
-        app.logger.info("Addding a new camera with url: ")
-        app.logger.info(camURL)
-        app.logger.info(fpsTweak)
-        return jsonify(data)
+    if request.method == 'POST':
+        try:
+            camURL = request.form.get('camURL')
+            application = request.form.get('application')
+            detectionMethod = request.form.get('detectionMethod')
+            fpsTweak = request.form.get('fpstweak')
+            with HomeSurveillance.camerasLock :
+                HomeSurveillance.add_camera(SurveillanceSystem.Camera.IPCamera(camURL,application,detectionMethod,fpsTweak))
+            data = {"camNum": len(HomeSurveillance.cameras) -1}
+            app.logger.info("Addding a new camera with url: ")
+            app.logger.info(camURL)
+            app.logger.info(fpsTweak)
+            return jsonify(data)
+        except Exception as e:
+            app.logger.error("ERROR could not open camera " + e)
+            pass
     return render_template('index.html')
 
 @app.route('/remove_camera', methods = ['GET','POST'])
@@ -273,7 +367,7 @@ def retrain_classifier():
         return jsonify(data)
     return render_template('index.html')
 
-@app.route('/get_faceimg/<name>')
+@app.route('/get_faceimg/<name>', methods = ['GET','POST'])
 def get_faceimg(name):  
     key,camNum = name.split("_")
     try:
@@ -290,8 +384,8 @@ def get_faceimg(name):
                     mimetype='multipart/x-mixed-replace; boundary=frame') 
 
 
-@app.route('/get_all_faceimgs/<name>')
-def get_faceimgs(name):  
+@app.route('/get_all_faceimgs/<name>', methods = ['GET','POST'])
+def get_all_faceimgs(name):
     key, camNum, imgNum = name.split("_")
     try:
         with HomeSurveillance.cameras[int(camNum)].peopleDictLock:
@@ -309,18 +403,21 @@ def get_faceimgs(name):
 def update_faces():
     """Used to push all detected faces to client"""
     while True:
-        peopledata = []
-        persondict = {}
-        thumbnail = None
-        with HomeSurveillance.camerasLock :
-            for i, camera in enumerate(HomeSurveillance.cameras):
-                with HomeSurveillance.cameras[i].peopleDictLock:
-                    for key, person in camera.people.iteritems():  
-                        persondict = {'identity': key , 'confidence': person.confidence, 'camera': i, 'timeD':person.time, 'prediction': person.identity,'thumbnailNum': len(person.thumbnails)}
-                        app.logger.info(persondict)
-                        peopledata.append(persondict)
+        try:
+            peopledata = []
+            persondict = {}
+            thumbnail = None
+            with HomeSurveillance.camerasLock :
+                for i, camera in enumerate(HomeSurveillance.cameras):
+                    with HomeSurveillance.cameras[i].peopleDictLock:
+                        for key, person in camera.people.iteritems():
+                            persondict = {'identity': key , 'confidence': person.confidence, 'camera': i, 'timeD':person.time, 'prediction': person.identity,'thumbnailNum': len(person.thumbnails)}
+                            app.logger.info(persondict)
+                            peopledata.append(persondict)
 
-        socketio.emit('people_detected', json.dumps(peopledata) ,namespace='/surveillance')
+            socketio.emit('people_detected', json.dumps(peopledata) ,namespace='/surveillance')
+        except Exception as e:
+            app.logger.error("update faces Error " + e)
         time.sleep(4)
 
 def alarm_state():
@@ -357,23 +454,23 @@ def connect():
     global facesUpdateThread 
     global monitoringThread
 
-    #print "\n\nclient connected\n\n"
+    # print "client connected"
     app.logger.info("client connected")
 
     if not alarmStateThread.isAlive():
-        #print "Starting alarmStateThread"
+        print "Starting alarmStateThread"
         app.logger.info("Starting alarmStateThread")
         alarmStateThread = threading.Thread(name='alarmstate_process_thread_',target= alarm_state, args=())
         alarmStateThread.start()
    
     if not facesUpdateThread.isAlive():
-        #print "Starting facesUpdateThread"
+        print "Starting facesUpdateThread"
         app.logger.info("Starting facesUpdateThread")
         facesUpdateThread = threading.Thread(name='websocket_process_thread_',target= update_faces, args=())
         facesUpdateThread.start()
 
     if not monitoringThread.isAlive():
-        #print "Starting monitoringThread"
+        print "Starting monitoringThread"
         app.logger.info("Starting monitoringThread")
         monitoringThread = threading.Thread(name='monitoring_process_thread_',target= system_monitoring, args=())
         monitoringThread.start()
@@ -385,7 +482,7 @@ def connect():
         for i, camera in enumerate(HomeSurveillance.cameras):
             with HomeSurveillance.cameras[i].peopleDictLock:
                 cameraData = {'camNum': i , 'url': camera.url}
-                #print cameraData
+                # print cameraData
                 app.logger.info(cameraData)
                 cameras.append(cameraData)
     alertData = {}
@@ -393,7 +490,7 @@ def connect():
     for i, alert in enumerate(HomeSurveillance.alerts):
         with HomeSurveillance.alertsLock:
             alertData = {'alert_id': alert.id , 'alert_message':  "Alert if " + alert.alertString}
-            #print alertData
+            # print alertData
             app.logger.info(alertData)
             alerts.append(alertData)
    
@@ -402,11 +499,17 @@ def connect():
 
 @socketio.on('disconnect', namespace='/surveillance')
 def disconnect():
-    #print('Client disconnected')
+    # print('Client disconnected')
     app.logger.info("Client disconnected")
 
 
+@socketio.on_error('/surveillance') # handles the '/surveillance' namespace
+def error_handler_surveillance(e):
+    print('error handler surveillance'+str(e))
+    app.logger.debug(str(e))
+
 if __name__ == '__main__':
+
      # Starts server on default port 5000 and makes socket connection available to other hosts (host = '0.0.0.0')
      formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
      handler = RotatingFileHandler(LOG_FILE, maxBytes=1000000, backupCount=10)
@@ -418,5 +521,4 @@ if __name__ == '__main__':
      log = logging.getLogger('werkzeug')
      log.setLevel(logging.DEBUG)
      log.addHandler(handler)
-     socketio.run(app, host='0.0.0.0', debug=False, use_reloader=False) 
-    
+     socketio.run(app, host='0.0.0.0', debug=False, use_reloader=False)
