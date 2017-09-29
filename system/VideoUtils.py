@@ -48,6 +48,7 @@ parser.add_argument('--cuda', action='store_true')
 args = parser.parse_args()
 
 CAPTURE_HZ = 30.0  # Determines frame rate at which frames are captured from video
+SUB_VIDEO_FRAMES = 20 * 60 * 3 # sub video buffer frame count
 
 
 class VideoAnalysis(object):
@@ -60,7 +61,7 @@ class VideoAnalysis(object):
     detect_recognise_track. These can be found in the
     SureveillanceSystem object, within the process_frame function"""
 
-    def __init__(self, videoURL, dlibDetection, fpsTweak):
+    def __init__(self, videoURL, targetname):
         logger.info("Loading Stream From video: " + videoURL)
         self.motionDetector = MotionDetector.MotionDetector()
         self.faceDetector = FaceDetector.FaceDetector()
@@ -70,12 +71,11 @@ class VideoAnalysis(object):
         self.streamingFPS = 0  # Streaming frame rate per second
         self.processingFPS = 0
         self.FPSstart = time.time()
+        self.name = targetname # search name
         self.FPScount = 0
         self.motion = False  # Used for alerts and transistion between system states i.e from motion detection to face detection
         self.people = {}  # Holds person ID and corresponding person object
         self.trackers = []  # Holds all alive trackers
-        self.dlibDetection = dlibDetection  # Used to choose detection method for camera (dlib - True vs opencv - False)
-        self.fpsTweak = fpsTweak  # used to know if we should apply the FPS work around when you have many cameras
         self.rgbFrame = None
         self.faceBoxes = None
         self.captureEvent = threading.Event()
@@ -84,6 +84,9 @@ class VideoAnalysis(object):
         self.video = cv2.VideoCapture(videoURL)  # VideoCapture object used to capture frames from video
         logger.info("We are opening the video feed.")
         self.url = videoURL
+        self.outname = None # out to disk file name
+        self.subvideoidxs = [] #sub video index
+
         if not self.video.isOpened():
             self.video.open()
         logger.info("Video feed open.")
@@ -100,18 +103,76 @@ class VideoAnalysis(object):
         self.video.release()
 
     def get_frame(self):
-        logger.info('Getting Frames')
+        logger.info('Getting Frames from video.')
         FPScount = 0
-        warmup = 0
+        framecount = 0
+        outflag = False # if out start
+        VideoIndex index = None
+        frameindex = 0
         # fpsTweak = 0  # set that to 1 if you want to enable Brandon's fps tweak. that break most video feeds so recommend not to
         FPSstart = time.time()
 
-        while True:
-            try:
-                logger.info('capture start')
-                if not self.video.isOpened():
-                    self.video.open()
+        while self.video.isOpened():
+
+            logger.info('video capture start')
+
+            success, frame = self.video.read()
+            # if not success breack the get frame execute
+            if not success:
+                break
+            # frame count
+            framecount = framecount + 1
+
+            self.captureEvent.clear()
+            if success:
+                self.captureFrame = frame
+                self.captureEvent.set()
+            else:
+                logger.info('caputure failure!')
+
+            FPScount += 1
+            # count fps for frame rate
+            if FPScount == 5:
+                self.streamingFPS = 5 / (time.time() - FPSstart)
+                FPSstart = time.time()
+                FPScount = 0
+
+            if self.streamingFPS != 0:  # If frame rate gets too fast slow it down, if it gets too slow speed it up
+                logger.info("cature fps %s, hz %s: " % (self.streamingFPS, CAPTURE_HZ))
+                if self.streamingFPS > CAPTURE_HZ:
+                    time.sleep(1 / CAPTURE_HZ)
+                else:
+                    time.sleep(self.streamingFPS / (CAPTURE_HZ * CAPTURE_HZ))
+
+    def get_range_video(self):
+        if not self.video.isOpened():
+            self.video.open()
+
+        logger.info('Getting Frames from video.')
+        FPScount = 0
+        framecount = 0
+        outflag = False  # if out start
+        # fpsTweak = 0  # set that to 1 if you want to enable Brandon's fps tweak. that break most video feeds so recommend not to
+        FPSstart = time.time()
+        if self.video.isOpened():
+            # write clip streaming frame
+            # Define the codec and create VideoWriter object
+            fourcc = cv2.cv.FOURCC(*'XVID')
+            self.outname = self.name + '_' + str(time.time()) + '.avi'
+            out = cv2.VideoWriter(self.outname, fourcc, 20, (640, 480))
+        try:
+            while self.video.isOpened():
+
+                logger.info('video capture start')
+
                 success, frame = self.video.read()
+                # if not success breack the get frame execute
+                if not success:
+                    break
+                # frame count
+                framecount = framecount + 1
+
+                out.write(frame)
 
                 self.captureEvent.clear()
                 if success:
@@ -121,23 +182,26 @@ class VideoAnalysis(object):
                     logger.info('caputure failure!')
 
                 FPScount += 1
-
+                # count fps for frame rate
                 if FPScount == 5:
                     self.streamingFPS = 5 / (time.time() - FPSstart)
                     FPSstart = time.time()
                     FPScount = 0
 
-                if self.fpsTweak:
-                    if self.streamingFPS != 0:  # If frame rate gets too fast slow it down, if it gets too slow speed it up
-                        logger.info("cature fps %s, hz %s: " % (self.streamingFPS, CAPTURE_HZ))
-                        if self.streamingFPS > CAPTURE_HZ:
-                            time.sleep(1 / CAPTURE_HZ)
-                        else:
-                            time.sleep(self.streamingFPS / (CAPTURE_HZ * CAPTURE_HZ))
-            except Exception as e:
-                logger.error("ERROR capture Face %s" % str(e))
-                self.video.release()  # If capture face get exception,it will release the video and reopen it.
-                pass
+                if self.streamingFPS != 0:  # If frame rate gets too fast slow it down, if it gets too slow speed it up
+                    logger.info("cature fps %s, hz %s: " % (self.streamingFPS, CAPTURE_HZ))
+                    if self.streamingFPS > CAPTURE_HZ:
+                        time.sleep(1 / CAPTURE_HZ)
+                    else:
+                        time.sleep(self.streamingFPS / (CAPTURE_HZ * CAPTURE_HZ))
+        except Exception as ex:
+            logger.error("video read frame exception", ex)
+
+        finally:
+            # release file output streaming
+            if outflag:
+                out.release()
+            self.video.release()
 
     def read_jpg(self):
         """We are using Motion JPEG, and OpenCV captures raw images,
@@ -206,3 +270,22 @@ class VideoAnalysis(object):
         logger.info("Boolean flags indicating whether images should be converted to RGB.")
         logger.info(self.video.get(cv.CV_CAP_PROP_CONVERT_RGB))
         logger.info("--------------------------End of video feed info---------------------")
+
+class VideoIndex(Object):
+
+    def __init__(self, startidx, endidx):
+        logger.info("Viedo Index created")
+        self.start = startidx
+        self.end = endidx
+
+    def setStart(self, startidx):
+        self.start = startidx
+
+    def setEnd(self, endidx):
+        self.end = endidx
+    # check if range index
+    def isRange(self, index):
+        return self.end > indx
+
+
+

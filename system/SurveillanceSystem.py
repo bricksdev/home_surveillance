@@ -158,17 +158,18 @@ class SurveillanceSystem(object):
             self.cameraProcessingThreads.append(thread)
             thread.start()
 
-    def add_camera(self, camera):
+    def add_camera(self, camera, detecting=False):
         """Adds new camera to the System and generates a 
-        frame processing thread"""
+        frame processing thread donot procss frame only read"""
         self.cameras.append(camera)
-        thread = threading.Thread(name='frame_process_thread_' +
-                                       str(len(self.cameras)),
-                                  target=self.process_frame,
-                                  args=(self.cameras[-1],))
-        thread.daemon = False
-        self.cameraProcessingThreads.append(thread)
-        thread.start()
+        if detecting :
+            thread = threading.Thread(name='frame_process_thread_' +
+                                           str(len(self.cameras)),
+                                      target=self.process_frame,
+                                      args=(self.cameras[-1],))
+            thread.daemon = False
+            self.cameraProcessingThreads.append(thread)
+            thread.start()
 
     def remove_camera(self, camID):
         """remove a camera to the System and kill its processing thread"""
@@ -223,9 +224,9 @@ class SurveillanceSystem(object):
 
 
 
-            ##################################################################################################################################################
-            # <#####################################################> FACE DETECTION AND RECOGNTIION <#########################################################>
-            ##################################################################################################################################################
+                    ##################################################################################################################################################
+                    # <#####################################################> FACE DETECTION AND RECOGNTIION <#########################################################>
+                    ##################################################################################################################################################
 
             elif camera.cameraFunction == "detect_recognise":
                 # This approach peroforms basic face detection and
@@ -278,9 +279,9 @@ class SurveillanceSystem(object):
 
                 camera.processing_frame = frame  # Used for streaming proccesed frames to client and email alerts, but mainly used for testing purposes
 
-                ##################################################################################################################################################
-                # <#####################################> MOTION DETECTION EVENT FOLLOWED BY FACE DETECTION AND RECOGNITION <#####################################>
-                ##################################################################################################################################################
+            ##################################################################################################################################################
+            # <#####################################> MOTION DETECTION EVENT FOLLOWED BY FACE DETECTION AND RECOGNITION <#####################################>
+            ##################################################################################################################################################
 
             elif camera.cameraFunction == "motion_detect_recognise":
                 # When motion is detected, consecutive frames are proccessed for faces.
@@ -734,7 +735,6 @@ class SurveillanceSystem(object):
 
             time.sleep(2)  # Put this thread to sleep - let websocket update alerts if need be (i.e delete or add)
 
-
     def detected_recoginer_face(self, frame_data):
         """This function performs all the frame proccessing.
                 It reads frames captured by the IPCamera instance,
@@ -752,7 +752,7 @@ class SurveillanceSystem(object):
             training_blocker = self.trainingEvent.wait()
 
             frame = cv2.flip(frame, 1)  # converts frame from BGR (OpenCV format) to RGB (Dlib format)
-            dlibDetection = False # default opencv
+            dlibDetection = False  # default opencv
             faceBoxes = self.faceDetector.detect_faces(frame, dlibDetection)
             if self.drawing == True:
                 frame = ImageUtils.draw_boxes(frame, faceBoxes, dlibDetection)
@@ -766,15 +766,15 @@ class SurveillanceSystem(object):
                     x, y, w, h = face_bb
                     size = 10;
                     # face resize
-                    if x > size :
+                    if x > size:
                         x = x - size
                     else:
                         x = 0
-                    if y > size :
+                    if y > size:
                         y = y - size
                     else:
                         y = 0
-                    size = 0;# reset size = 0
+                    size = 0;  # reset size = 0
                     face_bb = dlib.rectangle(long(x), long(y), long(x + w + size), long(y + h + size))
                     faceimg = ImageUtils.crop(frame, face_bb, dlibRect=True)
                     if len(self.faceDetector.detect_cascadeface_accurate(faceimg)) == 0:
@@ -788,6 +788,23 @@ class SurveillanceSystem(object):
             logger.debug("detecting face failure : %s " % str(e))
         return person
 
+    def get_face_frame(self, camera):
+        frame = camera.read_frame()
+        if not (frame == None or np.array_equal(frame, camera.tempFrame)):
+            # Checks to see if the new frame is the same as the previous frame
+            frame = ImageUtils.resize(frame)
+            camera.tempFrame = frame
+
+            # This approach peroforms basic face detection and
+            # recognition using OpenCV, Dlib and Openface
+            frame = cv2.flip(frame, 1)  # converts frame from BGR (OpenCV format) to RGB (Dlib format)
+            camera.faceBoxes = camera.faceDetector.detect_faces(frame, camera.dlibDetection)
+
+            logger.info('////  FACES DETECTED: ' + str(len(camera.faceBoxes)) + ' //')
+            if len(camera.faceBoxes) > 0:
+                camera.processing_frame = frame  # Used for streaming proccesed frames to client and email alerts, but mainly used for testing purposes
+            else:
+                camera.processing_frame = None # reset detecting frame
 
     def check_camera_events(self, alert):
         """Used to check state of cameras
@@ -851,9 +868,6 @@ class SurveillanceSystem(object):
 
                 return False  # Motion was not detected check next camera
 
-    def openWebcam(self):
-        pass
-
     def take_action(self, alert):
         """Sends email alert and/or triggers the alarm"""
 
@@ -868,7 +882,6 @@ class SurveillanceSystem(object):
                 self.trigger_alarm()
                 logger.info("alarm1 triggered")
             alert.action_taken = True
-
 
     def send_email_notification_alert(self, alert):
         """ Code produced in this tutorial - http://naelshiab.com/tutorial-send-email-python/"""
@@ -902,7 +915,6 @@ class SurveillanceSystem(object):
         server.sendmail(fromaddr, toaddr, text)
         server.quit()
 
-
     def add_face(self, name, image, upload):
         """Adds face to directory used for training the classifier"""
 
@@ -929,7 +941,6 @@ class SurveillanceSystem(object):
 
         return True
 
-
     def get_face_database_names(self):
         """Gets all the names that were most recently
         used to train the classifier"""
@@ -945,22 +956,21 @@ class SurveillanceSystem(object):
 
     def get_face_path_name(self, name):
         # get detected person's photo
-        path = fileDir + "/aligned-images/"+name
+        path = fileDir + "/aligned-images/" + name
         personfiles = []
         for file in os.listdir(path):
-            personfiles.append(file.replace(".png",""))
-        return name,personfiles
+            personfiles.append(file.replace(".png", ""))
+        return name, personfiles
 
     def get_face_name(self, name, filename):
         # get detected person's photo
-        path = fileDir + "/aligned-images/"+name+"/"+filename+".png"
+        path = fileDir + "/aligned-images/" + name + "/" + filename + ".png"
         face = cv2.imread(path)
         if face is not None:
             ret, jpeg = cv2.imencode('.jpg', face)  # Convert to jpg to be viewed by client
 
             return jpeg.tostring()
         return None
-
 
     def change_alarm_state(self):
         """Sends Raspberry PI a resquest to change the alarm state.
@@ -976,7 +986,6 @@ class SurveillanceSystem(object):
         else:
             self.alarmState = 'Disarmed'
         self.alarmTriggerd = alarm_states['triggered']
-
 
     def trigger_alarm(self):
         """Sends Raspberry PI a resquest to change to trigger the alarm.

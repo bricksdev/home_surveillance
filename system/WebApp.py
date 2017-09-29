@@ -31,6 +31,8 @@ import os
 import sys
 import cv2
 import psutil
+import httplib
+import binascii
 
 LOG_FILE = 'logs/WebApp.log'
 
@@ -38,10 +40,12 @@ LOG_FILE = 'logs/WebApp.log'
 HomeSurveillance = SurveillanceSystem.SurveillanceSystem() 
 # Threads used to continuously push data to the client
 alarmStateThread = threading.Thread() 
-facesUpdateThread = threading.Thread() 
+facesUpdateThread = threading.Thread()
+facesDetectingThread = threading.Thread()
 monitoringThread = threading.Thread() 
 alarmStateThread.daemon = False
 facesUpdateThread.daemon = False
+facesDetectingThread.daemon = False
 monitoringThread.daemon = False
 # Flask setup
 app = Flask('SurveillanceWebServer')
@@ -51,11 +55,16 @@ photos = UploadSet('photos', IMAGES)
 app.config['UPLOADED_PHOTOS_DEST'] = 'uploads/imgs'
 configure_uploads(app, photos)
 
-import sys
-sys.path.append('../pycharm-debug.egg')
+# import sys
+# sys.path.append('../pycharm-debug.egg')
+#
+# import pydevd
+# pydevd.settrace('192.168.1.14', port=21000, stdoutToServer=True, stderrToServer=True)
 
-import pydevd
-pydevd.settrace('192.168.1.14', port=21000, stdoutToServer=True, stderrToServer=True)
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    app.logger.error('Unhandled Exception: %s', str(e))
+    return render_template('pages/examples/500.html'), 500
 
 @app.route('/', methods=['GET','POST'])
 def login():
@@ -182,11 +191,6 @@ def get_name_faces(name):
                      b'Content-Type: image/jpeg\r\n\r\n' + img + b'\r\n\r\n'),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
-def openwebcam():
-    HomeSurveillance.open
-    message = "open successfull"
-    return render_template('index.html', message=message)
-
 def gen(camera):
     """Can read processed frame or unprocessed frame.
     When streaming the processed frame with read_processed()
@@ -195,7 +199,7 @@ def gen(camera):
     however slows down streaming and therefore read_jpg()
     is recommended"""
     while True:
-        frame = camera.read_jpg()    # read_jpg()  # read_processed()
+        frame = camera.read_processed()    # read_jpg()  # read_processed()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')  # Builds 'jpeg' data with header and payload
 
@@ -249,7 +253,7 @@ def add_camera():
             app.logger.info(fpsTweak)
             return jsonify(data)
         except Exception as e:
-            app.logger.error("ERROR could not open camera " + e)
+            app.logger.error("ERROR could not open camera %s",str(e))
             pass
     return render_template('index.html')
 
@@ -317,7 +321,7 @@ def remove_face():
                 del HomeSurveillance.cameras[int(camNum)].people[predicted_name]
                 app.logger.info("==== REMOVED: " + predicted_name + "===")
             except Exception as e:
-                app.logger.error("ERROR could not remove Face" + e)
+                app.logger.error("ERROR could not remove Face %s" , str(e))
                 pass
 
         data = {"face_removed":  'true'}
@@ -339,7 +343,7 @@ def add_face():
                 predicted_name = HomeSurveillance.cameras[int(camNum)].people[person_id].identity
                 del HomeSurveillance.cameras[int(camNum)].people[person_id]    # Removes face from people detected in all cameras 
             except Exception as e:
-                app.logger.error("ERROR could not add Face" + e)
+                app.logger.error("ERROR could not add Face %s " ,str( e))
  
         #print "trust " + str(trust)
         app.logger.info("trust " + str(trust))
@@ -372,9 +376,9 @@ def get_faceimg(name):
     key,camNum = name.split("_")
     try:
         with HomeSurveillance.cameras[int(camNum)].peopleDictLock:
-            img = HomeSurveillance.cameras[int(camNum)].people[key].thumbnail 
+            img = HomeSurveillance.cameras[int(camNum)].people[key].thumbnail
     except Exception as e:
-        app.logger.error("Error " + e)
+        app.logger.error("Error %s" , str(e))
         img = ""
 
     if img == "":
@@ -383,15 +387,39 @@ def get_faceimg(name):
                      b'Content-Type: image/jpeg\r\n\r\n' + img + b'\r\n\r\n'),
                     mimetype='multipart/x-mixed-replace; boundary=frame') 
 
+@app.route('/get_detecting_faceimg/<name>', methods = ['GET','POST'])
+def get_detecting_faceimg(name):
+    key,camNum = name.split("_")
+    try:
+        with HomeSurveillance.cameras[int(camNum)].peopleDictLock:
+            img = HomeSurveillance.cameras[int(camNum)].people[key].origin_thumbnail
+            # img = cv2.imdecode(img, cv2.IMREAD_UNCHANGED)
+    except Exception as e:
+        app.logger.error("Error %s", str(e))
+        img = ""
+
+    if img == "":
+        conn = httplib.HTTPSConnection("http://www.character-education.org.uk/images/exec/speaker-placeholder.png")
+        conn.request("GET", "/")
+        r1 = conn.getresponse()
+        print r1.status, r1.reason
+        img = data1 = r1.read()
+
+    data = img[:]
+    return data.tostring()
+    #return Response(img, mimetype='image/jpeg')
+    # return  Response((b'--frame\r\n'
+    #                  b'Content-Type: image/jpeg\r\n\r\n' + img + b'\r\n\r\n'),
+    #                 mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/get_all_faceimgs/<name>', methods = ['GET','POST'])
 def get_all_faceimgs(name):
     key, camNum, imgNum = name.split("_")
     try:
         with HomeSurveillance.cameras[int(camNum)].peopleDictLock:
-            img = HomeSurveillance.cameras[int(camNum)].people[key].thumbnails[imgNum] 
+            img = HomeSurveillance.cameras[int(camNum)].people[key].thumbnails[imgNum]
     except Exception as e:
-        app.logger.error("Error " + e)
+        app.logger.error("Error %s" , str(e))
         img = ""
 
     if img == "":
@@ -415,9 +443,33 @@ def update_faces():
                             app.logger.info(persondict)
                             peopledata.append(persondict)
 
+
             socketio.emit('people_detected', json.dumps(peopledata) ,namespace='/surveillance')
         except Exception as e:
-            app.logger.error("update faces Error " + e)
+            app.logger.error("update faces Error %s", str(e))
+        time.sleep(4)
+
+def detecting_faces():
+    """Used to push all detected faces to client"""
+    while True:
+        try:
+            peopledata = []
+            persondict = {}
+            thumbnail = None
+            with HomeSurveillance.camerasLock :
+                for i, camera in enumerate(HomeSurveillance.cameras):
+                    HomeSurveillance.get_face_frame(camera)
+                    frame = camera.processing_frame
+                    if not frame == None:
+                        ret, frame = cv2.imencode('.jpg', frame)
+                        nframe = binascii.b2a_base64(frame)
+                        persondict = {'camera': i, 'frame':nframe}
+                        app.logger.info(persondict)
+                        peopledata.append(persondict)
+
+            socketio.emit('person_detected', json.dumps(peopledata) ,namespace='/surveillance')
+        except Exception as e:
+            app.logger.error("update faces Error %s", str(e))
         time.sleep(4)
 
 def alarm_state():
@@ -451,7 +503,8 @@ def connect():
     
     # Need visibility of global thread object                
     global alarmStateThread
-    global facesUpdateThread 
+    global facesUpdateThread
+    global facesDetectingThread
     global monitoringThread
 
     # print "client connected"
@@ -468,6 +521,12 @@ def connect():
         app.logger.info("Starting facesUpdateThread")
         facesUpdateThread = threading.Thread(name='websocket_process_thread_',target= update_faces, args=())
         facesUpdateThread.start()
+
+    if not facesDetectingThread.isAlive():
+        print "Starting facesDetectingThread"
+        app.logger.info("Starting facesDetectingThread")
+        facesDetectingThread = threading.Thread(name='websocket_process_thread_',target= detecting_faces, args=())
+        facesDetectingThread.start()
 
     if not monitoringThread.isAlive():
         print "Starting monitoringThread"
@@ -502,11 +561,6 @@ def disconnect():
     # print('Client disconnected')
     app.logger.info("Client disconnected")
 
-
-@socketio.on_error('/surveillance') # handles the '/surveillance' namespace
-def error_handler_surveillance(e):
-    print('error handler surveillance'+str(e))
-    app.logger.debug(str(e))
 
 if __name__ == '__main__':
 

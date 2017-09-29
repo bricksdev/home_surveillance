@@ -82,7 +82,7 @@ class IPCamera(object):
         self.captureEvent = threading.Event()
         self.captureEvent.set()
         self.peopleDictLock = threading.Lock()  # Used to block concurrent access to people dictionary
-        self.video = cv2.VideoCapture(camURL * 1)  # VideoCapture object used to capture frames from IP camera
+        self.video = cv2.VideoCapture(camURL)  # VideoCapture object used to capture frames from IP camera
         logger.info("We are opening the video feed.")
         self.url = camURL
         if not self.video.isOpened():
@@ -108,37 +108,32 @@ class IPCamera(object):
         FPSstart = time.time()
 
         while True:
-            try:
-                logger.info('capture start')
-                if not self.video.isOpened():
-                    self.video.open()
-                success, frame = self.video.read()
+            logger.info('capture start')
 
-                self.captureEvent.clear()
-                if success:
-                    self.captureFrame = frame
-                    self.captureEvent.set()
-                else:
-                    logger.info('caputure failure!')
+            success, frame = self.video.read()
 
-                FPScount += 1
+            self.captureEvent.clear()
+            if success:
+                self.captureFrame = frame
+                self.captureEvent.set()
+            else:
+                logger.info('caputure failure!')
 
-                if FPScount == 5:
-                    self.streamingFPS = 5 / (time.time() - FPSstart)
-                    FPSstart = time.time()
-                    FPScount = 0
+            FPScount += 1
 
-                if self.fpsTweak:
-                    if self.streamingFPS != 0:  # If frame rate gets too fast slow it down, if it gets too slow speed it up
-                        logger.info("cature fps %s, hz %s: " % (self.streamingFPS, CAPTURE_HZ))
-                        if self.streamingFPS > CAPTURE_HZ:
-                            time.sleep(1 / CAPTURE_HZ)
-                        else:
-                            time.sleep(self.streamingFPS / (CAPTURE_HZ * CAPTURE_HZ))
-            except Exception as e:
-                logger.error("ERROR capture Face %s" % str(e))
-                self.video.release()  # If capture face get exception,it will release the video and reopen it.
-                pass
+            if FPScount == 5:
+                self.streamingFPS = 5 / (time.time() - FPSstart)
+                FPSstart = time.time()
+                FPScount = 0
+
+            if self.fpsTweak:
+                if self.streamingFPS != 0:  # If frame rate gets too fast slow it down, if it gets too slow speed it up
+                    logger.info("cature fps %s, hz %s: " % (self.streamingFPS, CAPTURE_HZ))
+                    if self.streamingFPS > CAPTURE_HZ:
+                        time.sleep(1 / CAPTURE_HZ)
+                    else:
+                        time.sleep(self.streamingFPS / (CAPTURE_HZ * CAPTURE_HZ))
+
 
     def read_jpg(self):
         """We are using Motion JPEG, and OpenCV captures raw images,
@@ -155,6 +150,11 @@ class IPCamera(object):
     def read_frame(self):
         capture_blocker = self.captureEvent.wait()
         frame = self.captureFrame
+        return frame
+
+    def read_one_frame(self):
+        capture_blocker = self.captureEvent.wait()
+        frame = self.processing_frame
         return frame
 
     def read_processed(self):

@@ -126,12 +126,10 @@ class FaceRecogniser(object):
             return None
         rep1 = self.getRep(img)  # Gets embedding representation of image
         logger.info("Embedding returned. Reshaping the image and flatting it out in a 1 dimension array.")
-        rep = rep1.reshape(1,
-                           -1)  # take the image and  reshape the image array to a single line instead of 2 dimensionals
+        rep = rep1.reshape(1, -1)  # take the image and  reshape the image array to a single line instead of 2 dimensionals
         start = time.time()
         logger.info("Submitting array for prediction.")
-        predictions = self.clf.predict_proba(
-            rep).ravel()  # Computes probabilities of possible outcomes for samples in classifier(clf).
+        predictions = self.clf.predict_proba(rep).ravel()  # Computes probabilities of possible outcomes for samples in classifier(clf).
         # logger.info("We need to dig here to know why the probability are not right.")
         maxI = np.argmax(predictions)
         person1 = self.le.inverse_transform(maxI)
